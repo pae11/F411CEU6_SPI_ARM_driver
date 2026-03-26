@@ -38,6 +38,9 @@ int main(void)
     /* Инициализируем DS1620 */
     DS1620_Init();
 
+    /* Инициализируем e-Paper один раз при старте */
+    EPD_Init();
+
     /* Первое отображение температуры сразу при старте */
     Temp_Demo();
     uint32_t last_update = sys_tick_count;
@@ -51,8 +54,8 @@ int main(void)
         gpioc->SetOutput(PC13_PIN, 1U);
         delay_ms(LED_BLINK_INTERVAL);
 
-        /* Обновляем температуру каждые 5 секунд */
-        if ((sys_tick_count - last_update) >= 5000U)
+        /* Обновляем температуру каждые 30 секунд */
+        if ((sys_tick_count - last_update) >= 30000U)
         {
             Temp_Demo();
             last_update = sys_tick_count;
@@ -136,9 +139,7 @@ void Temp_Demo(void)
     EPD_DrawString(bw, red, 2, 55, "deg C", EPD_COLOR_BLACK);
 
     /* ── Выводим на e-Paper ───────────────────────────── */
-    EPD_Init();
     EPD_Display(bw, red);
-    EPD_Sleep();
 }
 
 /**

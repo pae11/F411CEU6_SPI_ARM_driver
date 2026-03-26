@@ -10,7 +10,7 @@
 #define SYSTEM_CORE_CLOCK    100000000U  // 100 MHz
 
 // Параметры мигания светодиодом
-#define LED_BLINK_INTERVAL   50         // Интервал мигания в миллисекундах
+#define LED_BLINK_INTERVAL   500        // Интервал мигания в миллисекундах
 
 // Пользовательские функции
 void SystemClock_Config(void);
