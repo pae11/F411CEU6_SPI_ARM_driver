@@ -69,7 +69,13 @@ int main(void)
   */
 void Temp_Demo(void)
 {
-    static uint8_t bw[EPD_BUFFER_SIZE];
+    /*
+     * bw_prev  — зеркало того, что сейчас на экране (BW-слой)
+     * bw_new   — новый кадр (рендерим сюда)
+     * red      — RED-слой, задаётся один раз при старте, больше не меняется
+     */
+    static uint8_t bw_prev[EPD_BUFFER_SIZE];
+    static uint8_t bw_new[EPD_BUFFER_SIZE];
     static uint8_t red[EPD_BUFFER_SIZE];
     static uint8_t initialized = 0U;
 
@@ -95,41 +101,76 @@ void Temp_Demo(void)
 
     if (!initialized)
     {
-        /* ── Полный рефреш при первом запуске ──────────────────────── */
+        /* ── Полный рефреш при старте ─────────────────────────────── */
         for (uint32_t i = 0U; i < EPD_BUFFER_SIZE; i++)
         {
-            bw[i]  = 0xFFU;
-            red[i] = 0x00U;
+            bw_prev[i] = 0xFFU;
+            red[i]     = 0x00U;
         }
 
-        /* Лейблы RED — partial update их не трогает (0x26 не пишем) */
-        EPD_DrawString(bw, red, 2,  2, "DS1620", EPD_COLOR_RED);
-        EPD_DrawString(bw, red, 2, 55, "deg C",  EPD_COLOR_RED);
+        EPD_DrawString(bw_prev, red, 2,  2, "DS1620", EPD_COLOR_RED);
+        EPD_DrawString(bw_prev, red, 2, 55, "deg C",  EPD_COLOR_RED);
 
-        /* Разделители в BW */
         for (uint32_t col = 0U; col < EPD_BYTES_PER_ROW; col++)
         {
-            bw[13U * EPD_BYTES_PER_ROW + col] = 0x00U;
-            bw[51U * EPD_BYTES_PER_ROW + col] = 0x00U;
+            bw_prev[13U * EPD_BYTES_PER_ROW + col] = 0x00U;
+            bw_prev[51U * EPD_BYTES_PER_ROW + col] = 0x00U;
         }
 
-        /* Температура ЧЁРНЫМ — только BW-слой, partial update совместим */
-        EPD_DrawString_Big(bw, red, 2, 20, temp_str, EPD_COLOR_BLACK, 4U);
+        EPD_DrawString_Big(bw_prev, red, 2, 20, temp_str, EPD_COLOR_BLACK, 4U);
 
-        EPD_Display(bw, red);
+        EPD_Display(bw_prev, red);
         initialized = 1U;
     }
     else
     {
-        /* ── Partial update: только зона цифр (строки 14-50) ─────── */
+        /* ── Дифференциальный апдейт ──────────────────────────────── */
+
+        /* 1. Копируем предыдущий кадр в новый как основу */
+        for (uint32_t i = 0U; i < EPD_BUFFER_SIZE; i++)
+            bw_new[i] = bw_prev[i];
+
+        /* 2. Перерисовываем только зону цифр в новом кадре */
         for (uint32_t row = EPD_TEMP_Y0; row <= EPD_TEMP_Y1; row++)
             for (uint32_t col = 0U; col < EPD_BYTES_PER_ROW; col++)
-                bw[row * EPD_BYTES_PER_ROW + col] = 0xFFU;
+                bw_new[row * EPD_BYTES_PER_ROW + col] = 0xFFU;
 
-        EPD_DrawString_Big(bw, red, 2, 20, temp_str, EPD_COLOR_BLACK, 4U);
+        EPD_DrawString_Big(bw_new, red, 2, 20, temp_str, EPD_COLOR_BLACK, 4U);
 
-        EPD_PartialUpdate(bw + EPD_TEMP_Y0 * EPD_BYTES_PER_ROW,
-                          EPD_TEMP_Y0, EPD_TEMP_Y1);
+        /*
+         * 3. XOR: ищем первую и последнюю строку, где что-то изменилось.
+         *    bw_prev XOR bw_new != 0  →  в этой строке есть изменения.
+         */
+        uint16_t row_first = 0xFFFFU;
+        uint16_t row_last  = 0U;
+
+        for (uint32_t row = EPD_TEMP_Y0; row <= EPD_TEMP_Y1; row++)
+        {
+            for (uint32_t col = 0U; col < EPD_BYTES_PER_ROW; col++)
+            {
+                if ((bw_prev[row * EPD_BYTES_PER_ROW + col] ^
+                     bw_new [row * EPD_BYTES_PER_ROW + col]) != 0U)
+                {
+                    if (row < (uint32_t)row_first) row_first = (uint16_t)row;
+                    if (row > (uint32_t)row_last)  row_last  = (uint16_t)row;
+                    break;  /* нашли изменение в строке — переходим к следующей */
+                }
+            }
+        }
+
+        /* 4. Если изменений нет — ничего не делаем */
+        if (row_first <= row_last)
+        {
+            /* 5. Partial update только изменившихся строк */
+            EPD_PartialUpdate(bw_new + row_first * EPD_BYTES_PER_ROW,
+                              row_first, row_last);
+
+            /* 6. Синхронизируем prev с тем, что теперь на экране */
+            for (uint32_t row = row_first; row <= (uint32_t)row_last; row++)
+                for (uint32_t col = 0U; col < EPD_BYTES_PER_ROW; col++)
+                    bw_prev[row * EPD_BYTES_PER_ROW + col] =
+                        bw_new[row * EPD_BYTES_PER_ROW + col];
+        }
     }
 }
 
