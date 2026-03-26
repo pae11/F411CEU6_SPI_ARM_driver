@@ -143,20 +143,28 @@ void DS1620_Init(void)
     ds1620_write_byte(0x02U);   /* CPU=1, 1SHOT=0 */
     rst_low();
     delay_us(1U);
-}
 
-DS1620_Status DS1620_ReadTemp(float *temp_out)
-{
-    /* Issue Start Convert T */
+    /*
+     * Start continuous conversion once here.
+     * In 1SHOT=0 mode DS1620 keeps converting until Stop Convert (0x22).
+     * DS1620_ReadTemp just reads the latest completed result — no 0xEE needed.
+     */
     rst_high();
     delay_us(1U);
     ds1620_write_byte(0xEEU);   /* Start Convert T */
     rst_low();
 
-    /* Wait for conversion (750 ms max per datasheet) */
-    delay_ms(750U);
+    /* Wait for the very first conversion to complete (≤750 ms) */
+    delay_ms(800U);
+}
 
-    /* Read Temperature — 9 bits, LSB first */
+DS1620_Status DS1620_ReadTemp(float *temp_out)
+{
+    /*
+     * DS1620 is in continuous conversion mode (started in DS1620_Init).
+     * Just read the last completed result — no need to restart conversion
+     * or wait 750 ms here.
+     */
     rst_high();
     delay_us(1U);
     ds1620_write_byte(0xAAU);   /* Read Temperature */
