@@ -9,12 +9,15 @@
  *   Minimum clock period: 500 ns (@ 5V), 1 µs is safe margin.
  *
  * DS1620 commands:
+ *   0x01 — Write TH (9 bits, LSB first, 1 LSB = 0.5°C, stored in EEPROM)
+ *   0x02 — Write TL (9 bits, LSB first, same format)
  *   0xAC — Write Config (1 byte)
  *   0xEE — Start Convert T (no data)
  *   0xAA — Read Temperature (9 bits → 2 bytes, LSB first)
  *
- * Config byte bit1 (CPU): 1 = CPU-driven mode (no standalone thermostat)
+ * Config byte bit1 (CPU): 1 = CPU-driven mode
  * Config byte bit0 (1SHOT): 0 = continuous conversion
+ * Note: THIGH/TLOW/TOUT outputs are still active in CPU mode.
  */
 
 #include "DS1620/ds1620.h"
@@ -63,20 +66,25 @@ static inline uint8_t dq_read(void)
 
 /* ── 3-wire low-level ───────────────────────────────────────────── */
 
-/* Write 8-bit command, LSB first */
-static void ds1620_write_byte(uint8_t byte)
+/* Write n bits LSB-first (n ≤ 16).  Used for 8-bit commands and 9-bit data. */
+static void ds1620_write_bits(uint16_t data, uint8_t n)
 {
     dq_output();
-    for (uint8_t i = 0U; i < 8U; i++)
+    for (uint8_t i = 0U; i < n; i++)
     {
-        if (byte & 0x01U) dq_high(); else dq_low();
+        if (data & 0x0001U) dq_high(); else dq_low();
         delay_us(1U);
         clk_high();
         delay_us(1U);
         clk_low();
         delay_us(1U);
-        byte >>= 1U;
+        data >>= 1U;
     }
+}
+
+static inline void ds1620_write_byte(uint8_t byte)
+{
+    ds1620_write_bits((uint16_t)byte, 8U);
 }
 
 /*
@@ -135,12 +143,37 @@ void DS1620_Init(void)
 
     /*
      * Write config: CPU=1 (CPU-driven mode), 1SHOT=0 (continuous)
-     * Command 0xAC + 1 data byte
+     * Command 0xAC + 1 data byte.
+     * NOTE: THIGH/TLOW outputs remain active even in CPU mode.
      */
     rst_high();
     delay_us(1U);
     ds1620_write_byte(0xACU);   /* Write Config */
     ds1620_write_byte(0x02U);   /* CPU=1, 1SHOT=0 */
+    rst_low();
+    delay_us(1U);
+
+    /*
+     * Write TH and TL to DS1620 EEPROM.
+     * Format: 9-bit two's complement, 1 LSB = 0.5°C, LSB first.
+     * raw = (int16_t)(temp_C * 2.0f), masked to 9 bits.
+     * These values are retained after power-off (EEPROM).
+     * When THIGH (pin 5) is later wired to the MOSFET gate as HW failsafe,
+     * it will go HIGH at T >= DS1620_TH_CUTOFF — disabling the heater.
+     */
+    rst_high();
+    delay_us(1U);
+    ds1620_write_byte(0x01U);   /* Write TH command */
+    ds1620_write_bits(
+        (uint16_t)((int16_t)(DS1620_TH_CUTOFF * 2.0f)) & 0x01FFU, 9U);
+    rst_low();
+    delay_us(1U);
+
+    rst_high();
+    delay_us(1U);
+    ds1620_write_byte(0x02U);   /* Write TL command */
+    ds1620_write_bits(
+        (uint16_t)((int16_t)(DS1620_TL_CUTOFF * 2.0f)) & 0x01FFU, 9U);
     rst_low();
     delay_us(1U);
 
