@@ -1,0 +1,67 @@
+#settings
+.settings/
+
+#metadata
+.metadata/
+
+# STM32CubeIDE project files
+.cproject
+.project
+
+# Build directories
+build/
+Debug/
+debug/
+Release/
+release/
+
+# clangd index cache
+.cache/
+
+# FetchContent кэш (пакеты скачанные автоматически)
+.cmake_cache/
+
+#Drivers/CMSIS
+Drivers/
+Middlewares/
+
+# Prerequisites
+*.d
+
+# Object files
+*.o
+*.ko
+*.obj
+*.elf
+
+# Linker output
+*.ilk
+*.map
+*.exp
+
+# Libraries
+*.lib
+*.a
+*.la
+*.lo
+
+# Shared objects
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# Executables
+*.exe
+*.out
+*.app
+*.i*86
+*.x86_64
+*.hex
+*.bin
+
+# Debug files
+*.dSYM/
+*.su
+*.idb
+*.pdb

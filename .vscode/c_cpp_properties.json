@@ -1,0 +1,36 @@
+{
+    "configurations": [
+        {
+            "name": "STM32F411",
+            "includePath": [
+                "${workspaceFolder}/Sources",
+                "${workspaceFolder}/Sources/Inc",
+                "${workspaceFolder}/CMSIS/Core/Include",
+                "${workspaceFolder}/CMSIS/Device/ST/STM32F4xx/Include",
+                "${workspaceFolder}/CMSIS/Driver/Include",
+                "${workspaceFolder}/CMSIS/Driver/ST/STM32F4xx/Include",
+                "${workspaceFolder}/CMSIS/Config",
+                "${workspaceFolder}/Startup",
+                "${workspaceFolder}/build/_deps/cmsis5-src/CMSIS/Core/Include",
+                "${workspaceFolder}/build/_deps/cmsis_device_f4-src/Include",
+                "${workspaceFolder}/build/_deps/cmsis_driver-src/Include"
+            ],
+            "defines": [
+                "STM32F411xE",
+                "USE_CMSIS_DRIVER",
+                "__GNUC__"
+            ],
+            "compilerPath": "/Applications/ArmGNUToolchain/14.2.rel1/arm-none-eabi/bin/arm-none-eabi-gcc",
+            "cStandard": "gnu11",
+            "cppStandard": "gnu++17",
+            "intelliSenseMode": "gcc-arm",
+            "compilerArgs": [
+                "-mcpu=cortex-m4",
+                "-mthumb",
+                "-mfpu=fpv4-sp-d16",
+                "-mfloat-abi=hard"
+            ]
+        }
+    ],
+    "version": 4
+}

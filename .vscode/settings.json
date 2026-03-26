@@ -1,0 +1,25 @@
+{
+    "files.associations": {
+        "*.h": "c",
+        "*.c": "c",
+        "stm32f4xx.h": "c",
+        "core_cm4.h": "c"
+    },
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "cmake.configureOnOpen": true,
+    "cmake.buildDirectory": "${workspaceFolder}/build",
+    "cmake.generator": "Ninja",
+    "cmake.configureSettings": {
+        "CMAKE_TOOLCHAIN_FILE": "${workspaceFolder}/toolchain.cmake",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+    },
+    "cortex-debug.armToolchainPath": "/Applications/ArmGNUToolchain/14.2.rel1/arm-none-eabi/bin",
+    "cortex-debug.gdbPath": "/Applications/ArmGNUToolchain/14.2.rel1/arm-none-eabi/bin/arm-none-eabi-gdb",
+    "cortex-debug.openocdPath": "/usr/local/bin/openocd",
+    "editor.formatOnSave": false,
+    "files.exclude": {
+        "**/.git": true,
+        "**/.DS_Store": true,
+        "build/_deps": false
+    }
+}
