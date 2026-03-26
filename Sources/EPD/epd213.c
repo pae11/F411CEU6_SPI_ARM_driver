@@ -496,3 +496,65 @@ void EPD_DrawString_Big(uint8_t *bw_buf, uint8_t *red_buf,
         if (x + step > (int16_t)EPD_WIDTH) break;
     }
 }
+
+void EPD_PartialUpdate(const uint8_t *bw_rows, uint16_t y0, uint16_t y1)
+{
+    uint32_t n_bytes = (uint32_t)(y1 - y0 + 1U) * EPD_BYTES_PER_ROW;
+
+    /* Data entry mode: X increment, Y increment */
+    EPD_SendCmd(0x11U);
+    EPD_SendData(0x03U);
+
+    /* RAM-X address window: full width (bytes 0..15) */
+    EPD_SendCmd(0x44U);
+    EPD_SendData(0x00U);
+    EPD_SendData((uint8_t)(EPD_BYTES_PER_ROW - 1U));
+
+    /* RAM-Y address window: y0..y1 */
+    EPD_SendCmd(0x45U);
+    EPD_SendData((uint8_t)(y0 & 0xFFU));
+    EPD_SendData((uint8_t)(y0 >> 8U));
+    EPD_SendData((uint8_t)(y1 & 0xFFU));
+    EPD_SendData((uint8_t)(y1 >> 8U));
+
+    /* Reset address counters to start of window */
+    EPD_SendCmd(0x4EU);
+    EPD_SendData(0x00U);
+    EPD_SendCmd(0x4FU);
+    EPD_SendData((uint8_t)(y0 & 0xFFU));
+    EPD_SendData((uint8_t)(y0 >> 8U));
+
+    /* Write new BW data (0x24) for the partial window */
+    EPD_SendCmd(0x24U);
+    epd_gpiob->SetOutput(EPD_DC_PIN, 1U);
+    epd_gpioa->SetOutput(EPD_CS_PIN, 0U);
+    SPI1_DMA_Send(bw_rows, 0x00U, n_bytes);
+    epd_gpioa->SetOutput(EPD_CS_PIN, 1U);
+
+    /*
+     * Mirror the same data into 0x26 (the "previous BW" / RED RAM).
+     * Rows 14-50 have no red pixels, so overwriting 0x26 here is safe.
+     * This ensures the controller's differential state stays consistent:
+     * next partial update will see "previous == current" for this area.
+     */
+    EPD_SendCmd(0x45U);
+    EPD_SendData((uint8_t)(y0 & 0xFFU));
+    EPD_SendData((uint8_t)(y0 >> 8U));
+    EPD_SendData((uint8_t)(y1 & 0xFFU));
+    EPD_SendData((uint8_t)(y1 >> 8U));
+    EPD_SendCmd(0x4FU);
+    EPD_SendData((uint8_t)(y0 & 0xFFU));
+    EPD_SendData((uint8_t)(y0 >> 8U));
+
+    EPD_SendCmd(0x26U);
+    epd_gpiob->SetOutput(EPD_DC_PIN, 1U);
+    epd_gpioa->SetOutput(EPD_CS_PIN, 0U);
+    SPI1_DMA_Send(bw_rows, 0x00U, n_bytes);
+    epd_gpioa->SetOutput(EPD_CS_PIN, 1U);
+
+    /* Trigger partial-update waveform (0xFF = partial LUT in SSD1680) */
+    EPD_SendCmd(0x22U);
+    EPD_SendData(0xFFU);
+    EPD_SendCmd(0x20U);
+    EPD_WaitBusy();
+}

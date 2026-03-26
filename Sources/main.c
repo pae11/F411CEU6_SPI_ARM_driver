@@ -71,75 +71,80 @@ void Temp_Demo(void)
 {
     static uint8_t bw[EPD_BUFFER_SIZE];
     static uint8_t red[EPD_BUFFER_SIZE];
+    static uint8_t initialized = 0U;
 
     /* ── Считываем температуру ───────────────────────────── */
     float temperature = 0.0f;
     DS1620_Status status = DS1620_ReadTemp(&temperature);
 
-    /* ── Формируем строку температуры ──────────────────── */
-    /*
-     * Scale 4x: each glyph = 20 px wide (5*4) + 4 px gap = 24 px step.
-     * Display width = 122 px. Max chars that fit: 122/24 = 5 → "-99.5" fits.
-     * Vertical: 7*4 = 28 px tall. Centered vertically: (250-28)/2 = 111.
-     */
     char temp_str[10];
     if (status == DS1620_OK)
     {
-        int16_t raw_x2;
-        if (temperature >= 0.0f)
-            raw_x2 = (int16_t)(temperature * 2.0f + 0.25f);
-        else
-            raw_x2 = (int16_t)(temperature * 2.0f - 0.25f);
-
+        int16_t raw_x2 = (temperature >= 0.0f)
+            ? (int16_t)(temperature * 2.0f + 0.25f)
+            : (int16_t)(temperature * 2.0f - 0.25f);
         uint8_t  neg  = (raw_x2 < 0) ? 1U : 0U;
         uint16_t abs2 = (uint16_t)(neg ? -raw_x2 : raw_x2);
-        uint16_t deg  = abs2 / 2U;
-        uint8_t  frac = (uint8_t)((abs2 % 2U) * 5U);
-
         snprintf(temp_str, sizeof(temp_str), "%s%u.%u",
-                 neg ? "-" : "+", (unsigned)deg, (unsigned)frac);
+                 neg ? "-" : "+", (unsigned)(abs2 / 2U), (unsigned)((abs2 % 2U) * 5U));
     }
     else
     {
         snprintf(temp_str, sizeof(temp_str), "Err");
     }
 
-    /* ── Белый фон ────────────────────────────────────── */
-    for (uint32_t i = 0U; i < EPD_BUFFER_SIZE; i++)
+    if (!initialized)
     {
-        bw[i]  = 0xFFU;
-        red[i] = 0x00U;
+        /* ── Полная перерисовка при первом запуске ─────────────────── */
+        /*
+         * Layout:
+         *   row  2   "DS1620" — RED label (static, outside partial window)
+         *   row 13   separator line (black)
+         *   rows 14-50  ← EPD_TEMP_Y0..Y1 : зона partial update
+         *   row 20   big temperature digits (28 px, scale=4) — BLACK
+         *   row 51   separator line (black)
+         *   row 55   "deg C"  — RED label (static, outside partial window)
+         *
+         * RED-слой не трогается partial update → лейблы видны всегда.
+         */
+        for (uint32_t i = 0U; i < EPD_BUFFER_SIZE; i++)
+        {
+            bw[i]  = 0xFFU;
+            red[i] = 0x00U;
+        }
+
+        /* Статичные лейблы в RED (сохраняются через все последующие partial update) */
+        EPD_DrawString(bw, red, 2,  2, "DS1620", EPD_COLOR_RED);
+        EPD_DrawString(bw, red, 2, 55, "deg C",  EPD_COLOR_RED);
+
+        /* Разделители в BW (чёрные горизонтальные линии) */
+        for (uint32_t col = 0U; col < EPD_BYTES_PER_ROW; col++)
+        {
+            bw[13U * EPD_BYTES_PER_ROW + col] = 0x00U;
+            bw[51U * EPD_BYTES_PER_ROW + col] = 0x00U;
+        }
+
+        /* Температура в BLACK (BW-слой, совместимо с partial update) */
+        EPD_DrawString_Big(bw, red, 2, 20, temp_str, EPD_COLOR_BLACK, 4U);
+
+        EPD_Display(bw, red);
+        initialized = 1U;
     }
+    else
+    {
+        /* ── Частичное обновление — только зона цифр ────────────────── */
+        /* Очищаем строки EPD_TEMP_Y0..Y1 до белого */
+        for (uint32_t row = EPD_TEMP_Y0; row <= EPD_TEMP_Y1; row++)
+            for (uint32_t col = 0U; col < EPD_BYTES_PER_ROW; col++)
+                bw[row * EPD_BYTES_PER_ROW + col] = 0xFFU;
 
-    /*
-     * Layout (display is 122 wide × 250 tall, portrait):
-     *
-     *   y=  2   "DS1620"  small black label
-     *   y= 14   thin separator line
-     *   y= 20   big temperature value (scale=4, 28 px tall) in RED
-     *   y= 52   thin separator line
-     *   y= 58   "°C"  small label
-     */
+        /* Рисуем новую температуру чёрным */
+        EPD_DrawString_Big(bw, red, 2, 20, temp_str, EPD_COLOR_BLACK, 4U);
 
-    /* Label */
-    EPD_DrawString(bw, red, 2, 2, "DS1620", EPD_COLOR_BLACK);
-
-    /* Separator */
-    for (uint32_t col = 0; col < EPD_BYTES_PER_ROW; col++)
-        bw[13U * EPD_BYTES_PER_ROW + col] = 0x00U;
-
-    /* Big temperature value, scale=4 */
-    EPD_DrawString_Big(bw, red, 2, 20, temp_str, EPD_COLOR_RED, 4U);
-
-    /* Separator */
-    for (uint32_t col = 0; col < EPD_BYTES_PER_ROW; col++)
-        bw[51U * EPD_BYTES_PER_ROW + col] = 0x00U;
-
-    /* Unit label */
-    EPD_DrawString(bw, red, 2, 55, "deg C", EPD_COLOR_BLACK);
-
-    /* ── Выводим на e-Paper ───────────────────────────── */
-    EPD_Display(bw, red);
+        /* Partial refresh: только строки EPD_TEMP_Y0..EPD_TEMP_Y1 */
+        EPD_PartialUpdate(bw + EPD_TEMP_Y0 * EPD_BYTES_PER_ROW,
+                          EPD_TEMP_Y0, EPD_TEMP_Y1);
+    }
 }
 
 /**

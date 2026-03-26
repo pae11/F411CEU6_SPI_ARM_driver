@@ -111,4 +111,27 @@ void EPD_DrawString_Big(uint8_t *bw_buf, uint8_t *red_buf,
                         int16_t x, int16_t y, const char *str,
                         uint8_t color, uint8_t scale);
 
+/*
+ * Partial-update window for the temperature number area.
+ * Rows 14..50 sit between the two separator lines (row 13 and row 51)
+ * and contain only the big-font temperature digits (y=20, 28 px tall).
+ * These rows have no red pixels, so the BW-only partial waveform is safe.
+ */
+#define EPD_TEMP_Y0   14U
+#define EPD_TEMP_Y1   50U
+
+/**
+ * @brief  Fast partial refresh of a horizontal band (BW layer only).
+ *
+ * Sends bw_rows data for rows y0..y1 (full width) to the SSD1680 and
+ * triggers the partial-update waveform (0xFF).  The red layer is
+ * untouched — only the BW pixels in the specified rows are refreshed.
+ *
+ * @param  bw_rows  Pointer to the first byte of the BW buffer at row y0
+ *                  (i.e. bw_buf + y0 * EPD_BYTES_PER_ROW).
+ * @param  y0       First row of the update window (inclusive).
+ * @param  y1       Last  row of the update window (inclusive).
+ */
+void EPD_PartialUpdate(const uint8_t *bw_rows, uint16_t y0, uint16_t y1);
+
 #endif /* EPD213_H */
