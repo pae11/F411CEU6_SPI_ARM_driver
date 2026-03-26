@@ -35,25 +35,28 @@ int main(void)
     /* Инициализируем светодиод */
     LED_Initialize();
 
-    /* Инициализируем и демонстрируем e-Paper дисплей */
-    EPD_Demo();
-
     /* Инициализируем DS1620 */
     DS1620_Init();
+
+    /* Первое отображение температуры сразу при старте */
+    Temp_Demo();
+    uint32_t last_update = sys_tick_count;
 
     /* Основной цикл программы */
     while (1)
     {
-        /* Включаем светодиод (активный LOW на PC13) */
+        /* Мигаем светодиодом (heartbeat) */
         gpioc->SetOutput(PC13_PIN, 0U);
         delay_ms(LED_BLINK_INTERVAL);
-
-        /* Выключаем светодиод */
         gpioc->SetOutput(PC13_PIN, 1U);
         delay_ms(LED_BLINK_INTERVAL);
 
-        /* Считываем температуру каждые 2 с */
-        Temp_Demo();
+        /* Обновляем температуру каждые 5 секунд */
+        if ((sys_tick_count - last_update) >= 5000U)
+        {
+            Temp_Demo();
+            last_update = sys_tick_count;
+        }
     }
 }
 
@@ -217,64 +220,3 @@ void delay_ms(uint32_t ms)
   *         3. Перевод в глубокий сон
   * @retval None
   */
-void EPD_Demo(void)
-{
-    static uint8_t epd_bw[EPD_BUFFER_SIZE];   /* BW layer:  1=white, 0=black */
-    static uint8_t epd_red[EPD_BUFFER_SIZE];  /* Red layer: 1=red,   0=none  */
-
-    /* Инициализация контроллера SSD1680 */
-    EPD_Init();
-
-    /* Очистка — обязательна перед первым показом */
-    EPD_Clear();
-
-    /* Белый фон: BW=0xFF (white), Red=0x00 (no red) */
-    for (uint32_t i = 0U; i < EPD_BUFFER_SIZE; i++)
-    {
-        epd_bw[i]  = 0xFFU;
-        epd_red[i] = 0x00U;
-    }
-
-    /* ── Заголовок: КРАСНЫЙ текст ──────────────────────────────── */
-    EPD_DrawString(epd_bw, epd_red,  2,  2, "WeAct Studio",       EPD_COLOR_RED);
-    EPD_DrawString(epd_bw, epd_red,  2, 12, "2.13\" EPD B/W/RED",  EPD_COLOR_RED);
-
-    /* ── Разделитель: чёрная линия ─────────────────────────────── */
-    for (uint32_t col = 0U; col < EPD_BYTES_PER_ROW; col++)
-    {
-        epd_bw[22U * EPD_BYTES_PER_ROW + col] = 0x00U;
-    }
-
-    /* ── Основной текст: чёрный ────────────────────────────────── */
-    EPD_DrawString(epd_bw, epd_red,  2, 26, "STM32F411CEU6",      EPD_COLOR_BLACK);
-    EPD_DrawString(epd_bw, epd_red,  2, 36, "100MHz  512K Flash", EPD_COLOR_BLACK);
-    EPD_DrawString(epd_bw, epd_red,  2, 48, "SPI1 @ 12.5 MHz",   EPD_COLOR_BLACK);
-
-    /* ── Разделитель ────────────────────────────────────────────── */
-    for (uint32_t col = 0U; col < EPD_BYTES_PER_ROW; col++)
-    {
-        epd_bw[60U * EPD_BYTES_PER_ROW + col] = 0x00U;
-    }
-
-    /* ── Цифры и символы: красный ───────────────────────────────── */
-    EPD_DrawString(epd_bw, epd_red,  2, 64, "0123456789",         EPD_COLOR_RED);
-    EPD_DrawString(epd_bw, epd_red,  2, 74, "Hello, World!",      EPD_COLOR_BLACK);
-    EPD_DrawString(epd_bw, epd_red,  2, 84, "Red + Black + White",EPD_COLOR_RED);
-
-    /* ── Инвертированный блок: белый текст на чёрном ───────────── */
-    for (uint32_t row = 96U; row < 120U; row++)
-    {
-        for (uint32_t col = 0U; col < EPD_BYTES_PER_ROW; col++)
-        {
-            epd_bw[row * EPD_BYTES_PER_ROW + col] = 0x00U;
-        }
-    }
-    EPD_DrawString(epd_bw, epd_red,  2, 100, "White on Black",    EPD_COLOR_WHITE);
-    EPD_DrawString(epd_bw, epd_red,  2, 110, "STM32 CMSIS GPIO",  EPD_COLOR_WHITE);
-
-    /* Вывод изображения */
-    EPD_Display(epd_bw, epd_red);
-
-    /* Переводим дисплей в спящий режим */
-    EPD_Sleep();
-}

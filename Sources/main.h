@@ -16,7 +16,6 @@
 void SystemClock_Config(void);
 void LED_Initialize(void);
 void delay_ms(uint32_t ms);
-void EPD_Demo(void);
 void Temp_Demo(void);
 
 #endif /* MAIN_H */
