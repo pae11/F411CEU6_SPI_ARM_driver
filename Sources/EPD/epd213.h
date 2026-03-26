@@ -97,4 +97,18 @@ void EPD_DrawChar(uint8_t *bw_buf, uint8_t *red_buf,
 void EPD_DrawString(uint8_t *bw_buf, uint8_t *red_buf,
                     int16_t x, int16_t y, const char *str, uint8_t color);
 
+/**
+ * @brief  Draw a single character scaled up by `scale` times.
+ * @param  scale  Pixel magnification factor (2=10x14, 3=15x21, 4=20x28).
+ */
+void EPD_DrawChar_Big(uint8_t *bw_buf, uint8_t *red_buf,
+                      int16_t x, int16_t y, char c, uint8_t color, uint8_t scale);
+
+/**
+ * @brief  Draw a scaled string. Char width = (5+1)*scale pixels.
+ */
+void EPD_DrawString_Big(uint8_t *bw_buf, uint8_t *red_buf,
+                        int16_t x, int16_t y, const char *str,
+                        uint8_t color, uint8_t scale);
+
 #endif /* EPD213_H */

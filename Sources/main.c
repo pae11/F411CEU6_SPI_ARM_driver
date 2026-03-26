@@ -58,7 +58,7 @@ int main(void)
 }
 
 /**
-  * @brief  Считать температуру DS1620 и отобразить на e-Paper 2.13"
+  * @brief  Считать температуру DS1620 и отобразить на e-Paper (only temperature, big font)
   * @retval None
   */
 void Temp_Demo(void)
@@ -66,76 +66,74 @@ void Temp_Demo(void)
     static uint8_t bw[EPD_BUFFER_SIZE];
     static uint8_t red[EPD_BUFFER_SIZE];
 
-    /* ── Считываем температуру ──────────────────────────────── */
+    /* ── Считываем температуру ───────────────────────────── */
     float temperature = 0.0f;
     DS1620_Status status = DS1620_ReadTemp(&temperature);
 
-    /* ── Формируем строку температуры без printf float ────── */
-    char temp_str[16];
+    /* ── Формируем строку температуры ──────────────────── */
+    /*
+     * Scale 4x: each glyph = 20 px wide (5*4) + 4 px gap = 24 px step.
+     * Display width = 122 px. Max chars that fit: 122/24 = 5 → "-99.5" fits.
+     * Vertical: 7*4 = 28 px tall. Centered vertically: (250-28)/2 = 111.
+     */
+    char temp_str[10];
     if (status == DS1620_OK)
     {
-        /*
-         * DS1620 resolution = 0.5°С; multiply by 2, split into int + frac.
-         * Rounding nudge ±0.25 handles float representation noise.
-         */
         int16_t raw_x2;
         if (temperature >= 0.0f)
             raw_x2 = (int16_t)(temperature * 2.0f + 0.25f);
         else
             raw_x2 = (int16_t)(temperature * 2.0f - 0.25f);
 
-        uint8_t neg    = (raw_x2 < 0) ? 1U : 0U;
-        uint16_t abs2  = (uint16_t)(neg ? -raw_x2 : raw_x2);
-        uint16_t deg   = abs2 / 2U;
-        uint8_t  frac  = (uint8_t)((abs2 % 2U) * 5U);  /* 0 or 5 */
+        uint8_t  neg  = (raw_x2 < 0) ? 1U : 0U;
+        uint16_t abs2 = (uint16_t)(neg ? -raw_x2 : raw_x2);
+        uint16_t deg  = abs2 / 2U;
+        uint8_t  frac = (uint8_t)((abs2 % 2U) * 5U);
 
-        snprintf(temp_str, sizeof(temp_str), "%s%u.%u C",
+        snprintf(temp_str, sizeof(temp_str), "%s%u.%u",
                  neg ? "-" : "+", (unsigned)deg, (unsigned)frac);
     }
     else
     {
-        snprintf(temp_str, sizeof(temp_str), "NO SENSOR");
+        snprintf(temp_str, sizeof(temp_str), "Err");
     }
 
-    /* ── Белый фон ──────────────────────────────────────── */
+    /* ── Белый фон ────────────────────────────────────── */
     for (uint32_t i = 0U; i < EPD_BUFFER_SIZE; i++)
     {
         bw[i]  = 0xFFU;
         red[i] = 0x00U;
     }
 
-    /* ── Заголовок (красный) ────────────────────────────── */
-    EPD_DrawString(bw, red,  2,  2, "DS1620 Thermometer",  EPD_COLOR_RED);
+    /*
+     * Layout (display is 122 wide × 250 tall, portrait):
+     *
+     *   y=  2   "DS1620"  small black label
+     *   y= 14   thin separator line
+     *   y= 20   big temperature value (scale=4, 28 px tall) in RED
+     *   y= 52   thin separator line
+     *   y= 58   "°C"  small label
+     */
 
-    /* Разделитель */
+    /* Label */
+    EPD_DrawString(bw, red, 2, 2, "DS1620", EPD_COLOR_BLACK);
+
+    /* Separator */
     for (uint32_t col = 0; col < EPD_BYTES_PER_ROW; col++)
-        bw[12U * EPD_BYTES_PER_ROW + col] = 0x00U;
+        bw[13U * EPD_BYTES_PER_ROW + col] = 0x00U;
 
-    /* ── Надпись "Температура:" (чёрная) ──────────────────── */
-    EPD_DrawString(bw, red,  2, 18, "Temperature:",        EPD_COLOR_BLACK);
+    /* Big temperature value, scale=4 */
+    EPD_DrawString_Big(bw, red, 2, 20, temp_str, EPD_COLOR_RED, 4U);
 
-    /* ── Значение температуры крупнее (красный) ────────── */
-    /* Рисуем трижды со смещением +1 px — эффект жирного шрифта */
-    EPD_DrawString(bw, red,  2, 32, temp_str, EPD_COLOR_RED);
-    EPD_DrawString(bw, red,  3, 33, temp_str, EPD_COLOR_RED);
-    EPD_DrawString(bw, red,  2, 42, temp_str, EPD_COLOR_RED);
-    EPD_DrawString(bw, red,  3, 43, temp_str, EPD_COLOR_RED);
-
-    /* Разделитель */
+    /* Separator */
     for (uint32_t col = 0; col < EPD_BYTES_PER_ROW; col++)
-        bw[55U * EPD_BYTES_PER_ROW + col] = 0x00U;
+        bw[51U * EPD_BYTES_PER_ROW + col] = 0x00U;
 
-    /* ── Статус (чёрный) ────────────────────────────────── */
-    if (status == DS1620_OK)
-        EPD_DrawString(bw, red, 2, 60, "Sensor: OK",      EPD_COLOR_BLACK);
-    else
-        EPD_DrawString(bw, red, 2, 60, "Sensor: ERROR",   EPD_COLOR_RED);
+    /* Unit label */
+    EPD_DrawString(bw, red, 2, 55, "deg C", EPD_COLOR_BLACK);
 
-    EPD_DrawString(bw, red,  2, 72, "WeAct Black Pill",    EPD_COLOR_BLACK);
-    EPD_DrawString(bw, red,  2, 82, "STM32F411CEU6",       EPD_COLOR_BLACK);
-
-    /* ── Выводим на e-Paper ──────────────────────────────── */
-    EPD_Init();          /* будим из deep sleep */
+    /* ── Выводим на e-Paper ───────────────────────────── */
+    EPD_Init();
     EPD_Display(bw, red);
     EPD_Sleep();
 }

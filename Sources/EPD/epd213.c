@@ -427,3 +427,72 @@ void EPD_DrawString(uint8_t *bw_buf, uint8_t *red_buf,
         if (x + (int16_t)FONT_CHAR_W > (int16_t)EPD_WIDTH) break;
     }
 }
+
+/* ── Scaled text rendering ────────────────────────────────────────── */
+
+void EPD_DrawChar_Big(uint8_t *bw_buf, uint8_t *red_buf,
+                      int16_t x, int16_t y, char c, uint8_t color, uint8_t scale)
+{
+    if ((uint8_t)c < 32U || (uint8_t)c > 127U) c = '?';
+    const uint8_t *glyph = font5x7[(uint8_t)c - 32U];
+
+    for (int16_t cx = 0; cx < 5; cx++)
+    {
+        uint8_t col = glyph[cx];
+        for (int16_t cy = 0; cy < 7; cy++)
+        {
+            uint8_t fg = (col >> (uint8_t)cy) & 1U;
+            for (int16_t sx = 0; sx < (int16_t)scale; sx++)
+            {
+                for (int16_t sy = 0; sy < (int16_t)scale; sy++)
+                {
+                    int16_t px = x + cx * (int16_t)scale + sx;
+                    int16_t py = y + cy * (int16_t)scale + sy;
+                    if (px < 0 || px >= (int16_t)EPD_WIDTH)  continue;
+                    if (py < 0 || py >= (int16_t)EPD_HEIGHT) continue;
+
+                    uint32_t idx      = (uint32_t)py * EPD_BYTES_PER_ROW + (uint32_t)px / 8U;
+                    uint8_t  bit_mask = 0x80U >> ((uint32_t)px % 8U);
+
+                    if (fg)
+                    {
+                        if (color == EPD_COLOR_RED)
+                        {
+                            bw_buf[idx]  |=  bit_mask;
+                            red_buf[idx] |=  bit_mask;
+                        }
+                        else if (color == EPD_COLOR_BLACK)
+                        {
+                            bw_buf[idx]  &= ~bit_mask;
+                            red_buf[idx] &= ~bit_mask;
+                        }
+                        else
+                        {
+                            bw_buf[idx]  |=  bit_mask;
+                            red_buf[idx] &= ~bit_mask;
+                        }
+                    }
+                    else
+                    {
+                        bw_buf[idx]  |=  bit_mask;
+                        red_buf[idx] &= ~bit_mask;
+                    }
+                }
+            }
+        }
+    }
+}
+
+void EPD_DrawString_Big(uint8_t *bw_buf, uint8_t *red_buf,
+                        int16_t x, int16_t y, const char *str,
+                        uint8_t color, uint8_t scale)
+{
+    int16_t step = (int16_t)((FONT_CHAR_W) * scale);
+    while (*str != '\0')
+    {
+        EPD_DrawChar_Big(bw_buf, red_buf, x, y, *str, color, scale);
+        str++;
+        x += step;
+        if (x + step > (int16_t)EPD_WIDTH) break;
+    }
+}
