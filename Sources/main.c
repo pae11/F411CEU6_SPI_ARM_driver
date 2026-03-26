@@ -71,6 +71,7 @@ void Temp_Demo(void)
 {
     static uint8_t bw[EPD_BUFFER_SIZE];
     static uint8_t red[EPD_BUFFER_SIZE];
+    static uint8_t initialized = 0U;
 
     /* ── Считываем температуру ───────────────────────────── */
     float temperature = 0.0f;
@@ -92,26 +93,44 @@ void Temp_Demo(void)
         snprintf(temp_str, sizeof(temp_str), "Err");
     }
 
-    /* ── Формируем кадр ───────────────────────────────────── */
-    for (uint32_t i = 0U; i < EPD_BUFFER_SIZE; i++)
+    if (!initialized)
     {
-        bw[i]  = 0xFFU;
-        red[i] = 0x00U;
+        /* ── Полный рефреш при первом запуске ──────────────────────── */
+        for (uint32_t i = 0U; i < EPD_BUFFER_SIZE; i++)
+        {
+            bw[i]  = 0xFFU;
+            red[i] = 0x00U;
+        }
+
+        /* Лейблы RED — partial update их не трогает (0x26 не пишем) */
+        EPD_DrawString(bw, red, 2,  2, "DS1620", EPD_COLOR_RED);
+        EPD_DrawString(bw, red, 2, 55, "deg C",  EPD_COLOR_RED);
+
+        /* Разделители в BW */
+        for (uint32_t col = 0U; col < EPD_BYTES_PER_ROW; col++)
+        {
+            bw[13U * EPD_BYTES_PER_ROW + col] = 0x00U;
+            bw[51U * EPD_BYTES_PER_ROW + col] = 0x00U;
+        }
+
+        /* Температура ЧЁРНЫМ — только BW-слой, partial update совместим */
+        EPD_DrawString_Big(bw, red, 2, 20, temp_str, EPD_COLOR_BLACK, 4U);
+
+        EPD_Display(bw, red);
+        initialized = 1U;
     }
-
-    EPD_DrawString(bw, red, 2,  2, "DS1620", EPD_COLOR_RED);
-
-    for (uint32_t col = 0U; col < EPD_BYTES_PER_ROW; col++)
+    else
     {
-        bw[13U * EPD_BYTES_PER_ROW + col] = 0x00U;
-        bw[51U * EPD_BYTES_PER_ROW + col] = 0x00U;
+        /* ── Partial update: только зона цифр (строки 14-50) ─────── */
+        for (uint32_t row = EPD_TEMP_Y0; row <= EPD_TEMP_Y1; row++)
+            for (uint32_t col = 0U; col < EPD_BYTES_PER_ROW; col++)
+                bw[row * EPD_BYTES_PER_ROW + col] = 0xFFU;
+
+        EPD_DrawString_Big(bw, red, 2, 20, temp_str, EPD_COLOR_BLACK, 4U);
+
+        EPD_PartialUpdate(bw + EPD_TEMP_Y0 * EPD_BYTES_PER_ROW,
+                          EPD_TEMP_Y0, EPD_TEMP_Y1);
     }
-
-    EPD_DrawString_Big(bw, red, 2, 20, temp_str, EPD_COLOR_RED, 4U);
-
-    EPD_DrawString(bw, red, 2, 55, "deg C", EPD_COLOR_RED);
-
-    EPD_Display(bw, red);
 }
 
 /**

@@ -111,4 +111,21 @@ void EPD_DrawString_Big(uint8_t *bw_buf, uint8_t *red_buf,
                         int16_t x, int16_t y, const char *str,
                         uint8_t color, uint8_t scale);
 
+/* Row range of the big-font temperature area (between the two separators) */
+#define EPD_TEMP_Y0   14U
+#define EPD_TEMP_Y1   50U
+
+/**
+ * @brief  Partial refresh of a horizontal band (BW layer only).
+ *
+ * Updates rows y0..y1 in the BW RAM (0x24) and triggers the SSD1680
+ * partial waveform (0xFF).  The RED RAM (0x26) is never written, so
+ * red labels outside the window remain visible.
+ *
+ * @param  bw_rows  bw_buf + y0 * EPD_BYTES_PER_ROW
+ * @param  y0       First row of update window (inclusive).
+ * @param  y1       Last  row of update window (inclusive).
+ */
+void EPD_PartialUpdate(const uint8_t *bw_rows, uint16_t y0, uint16_t y1);
+
 #endif /* EPD213_H */

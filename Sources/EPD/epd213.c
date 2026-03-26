@@ -497,4 +497,49 @@ void EPD_DrawString_Big(uint8_t *bw_buf, uint8_t *red_buf,
     }
 }
 
+void EPD_PartialUpdate(const uint8_t *bw_rows, uint16_t y0, uint16_t y1)
+{
+    uint32_t n_bytes = (uint32_t)(y1 - y0 + 1U) * EPD_BYTES_PER_ROW;
+
+    /* Data entry mode: X increment, Y increment */
+    EPD_SendCmd(0x11U);
+    EPD_SendData(0x03U);
+
+    /* RAM-X window: full width */
+    EPD_SendCmd(0x44U);
+    EPD_SendData(0x00U);
+    EPD_SendData((uint8_t)(EPD_BYTES_PER_ROW - 1U));
+
+    /* RAM-Y window: y0..y1 */
+    EPD_SendCmd(0x45U);
+    EPD_SendData((uint8_t)(y0 & 0xFFU));
+    EPD_SendData((uint8_t)(y0 >> 8U));
+    EPD_SendData((uint8_t)(y1 & 0xFFU));
+    EPD_SendData((uint8_t)(y1 >> 8U));
+
+    /* Set address counters to start of window */
+    EPD_SendCmd(0x4EU);
+    EPD_SendData(0x00U);
+    EPD_SendCmd(0x4FU);
+    EPD_SendData((uint8_t)(y0 & 0xFFU));
+    EPD_SendData((uint8_t)(y0 >> 8U));
+
+    /*
+     * Write new BW data to 0x24 ONLY.
+     * Register 0x26 (RED RAM) is intentionally NOT touched —
+     * red pixels outside this window remain on screen.
+     */
+    EPD_SendCmd(0x24U);
+    epd_gpiob->SetOutput(EPD_DC_PIN, 1U);
+    epd_gpioa->SetOutput(EPD_CS_PIN, 0U);
+    SPI1_DMA_Send(bw_rows, 0x00U, n_bytes);
+    epd_gpioa->SetOutput(EPD_CS_PIN, 1U);
+
+    /* Trigger partial-update waveform */
+    EPD_SendCmd(0x22U);
+    EPD_SendData(0xFFU);
+    EPD_SendCmd(0x20U);
+    EPD_WaitBusy();
+}
+
 
