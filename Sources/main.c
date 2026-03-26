@@ -37,6 +37,9 @@ int main(void)
     /* Инициализируем и демонстрируем e-Paper дисплей */
     EPD_Demo();
 
+    /* Инициализируем DS1620 */
+    DS1620_Init();
+
     /* Основной цикл программы */
     while (1)
     {
@@ -47,7 +50,22 @@ int main(void)
         /* Выключаем светодиод */
         gpioc->SetOutput(PC13_PIN, 1U);
         delay_ms(LED_BLINK_INTERVAL);
+
+        /* Считываем температуру каждые 2 с */
+        Temp_Demo();
     }
+}
+
+/**
+  * @brief  Считать температуру DS1620 (stub — TODO: вывод на e-Paper или UART)
+  * @retval None
+  */
+void Temp_Demo(void)
+{
+    float temperature = 0.0f;
+    DS1620_Status status = DS1620_ReadTemp(&temperature);
+    (void)status;
+    (void)temperature;
 }
 
 /**

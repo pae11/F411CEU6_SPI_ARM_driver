@@ -199,6 +199,9 @@ set(PROJECT_SOURCES
 
     # E-Paper 2.13" драйвер (WeAct Studio, SSD1680)
     Sources/EPD/epd213.c
+
+    # Dallas DS1620 3-wire термометр (PB3=CLK, PB4=DQ, PB5=RST)
+    Sources/DS1620/ds1620.c
 )
 
 # Определения компилятора
@@ -222,6 +225,9 @@ set(PROJECT_INCLUDES
 
     # Заголовки EPD драйвера
     Sources/EPD
+
+    # Заголовки DS1620 драйвера
+    Sources/DS1620
 
     # Конфигурация RTE
     CMSIS/Config
