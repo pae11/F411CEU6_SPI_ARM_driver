@@ -4,9 +4,16 @@
 /* PC13: порт C (индекс 2) * 16 + 13 = 45 */
 #define PC13_PIN    45U
 
-/* Получаем доступ к драйверу GPIO порта C */
+/* GPIO порт C (LED) */
 extern ARM_DRIVER_GPIO Driver_GPIO_C;
 static ARM_DRIVER_GPIO *gpioc;
+
+/* GPIO порт A (relay PA6) */
+extern ARM_DRIVER_GPIO Driver_GPIO_A;
+static ARM_DRIVER_GPIO *gpioa_main;
+
+/* Состояние реле: 0=выкл, 1=вкл */
+static uint8_t relay_on = 0U;
 
 /* SysTick счётчик для delay_ms */
 static volatile uint32_t sys_tick_count = 0U;
@@ -35,6 +42,9 @@ int main(void)
     /* Инициализируем светодиод */
     LED_Initialize();
 
+    /* Инициализируем выход реле (PA6) */
+    Relay_Initialize();
+
     /* Инициализируем DS1620 */
     DS1620_Init();
 
@@ -54,9 +64,20 @@ int main(void)
         gpioc->SetOutput(PC13_PIN, 1U);
         delay_ms(LED_BLINK_INTERVAL);
 
-        /* Обновляем температуру каждые 30 секунд */
+        /* Обновляем каждые 5 секунд */
         if ((sys_tick_count - last_update) >= 5000U)
         {
+            /* ── Термостатная логика с гистерезисом ── */
+            float cur_temp = 0.0f;
+            if (DS1620_ReadTemp(&cur_temp) == DS1620_OK)
+            {
+                if (!relay_on && cur_temp < (TEMP_SETPOINT - TEMP_HYST * 0.5f))
+                    relay_on = 1U;
+                else if (relay_on && cur_temp > (TEMP_SETPOINT + TEMP_HYST * 0.5f))
+                    relay_on = 0U;
+            }
+            gpioa_main->SetOutput(RELAY_PIN, relay_on);
+
             Temp_Demo();
             last_update = sys_tick_count;
         }
@@ -64,22 +85,32 @@ int main(void)
 }
 
 /**
-  * @brief  Считать температуру DS1620 и отобразить на e-Paper (only temperature, big font)
+  * @brief  Термостатный дисплей: температура + уставка + статус реле (HEAT ON/OFF)
+  *
+  * Раскладка экрана (122×250 px, портрет):
+  *   y=  2  "DS1620"           RED  (статично)
+  *   y= 13  ─────────────────  разделитель
+  *   y= 20  +23.50             BLACK scale=3  ← динамично (зона А: строки 14-43)
+  *   y= 44  ─────────────────  разделитель
+  *   y= 48  "deg C"            RED  (статично)
+  *   y= 65  ─────────────────  разделитель
+  *   y= 70  "SET +22.0C"       RED  (статично)
+  *   y= 83  ─────────────────  разделитель
+  *   y= 88  "HEAT:"            RED  (статично)
+  *   y= 99  ─────────────────  разделитель
+  *   y=104  ON  / OFF          BLACK scale=3  ← динамично (зона Б: строки 100-128)
+  *   y=129  ─────────────────  разделитель
+  *
   * @retval None
   */
 void Temp_Demo(void)
 {
-    /*
-     * bw_prev  — зеркало того, что сейчас на экране (BW-слой)
-     * bw_new   — новый кадр (рендерим сюда)
-     * red      — RED-слой, задаётся один раз при старте, больше не меняется
-     */
     static uint8_t bw_prev[EPD_BUFFER_SIZE];
     static uint8_t bw_new[EPD_BUFFER_SIZE];
     static uint8_t red[EPD_BUFFER_SIZE];
     static uint8_t initialized = 0U;
 
-    /* ── Считываем температуру ───────────────────────────── */
+    /* ── Текущая температура ────────────────────────────────── */
     float temperature = 0.0f;
     DS1620_Status status = DS1620_ReadTemp(&temperature);
 
@@ -91,7 +122,6 @@ void Temp_Demo(void)
             : (int16_t)(temperature * 2.0f - 0.25f);
         uint8_t  neg  = (raw_x2 < 0) ? 1U : 0U;
         uint16_t abs2 = (uint16_t)(neg ? -raw_x2 : raw_x2);
-        /* DS1620 resolves 0.5°C: second decimal is always 0 or 5 → show as 2 digits */
         snprintf(temp_str, sizeof(temp_str), "%s%u.%02u",
                  neg ? "-" : "+", (unsigned)(abs2 / 2U), (unsigned)((abs2 % 2U) * 50U));
     }
@@ -100,52 +130,82 @@ void Temp_Demo(void)
         snprintf(temp_str, sizeof(temp_str), "Err");
     }
 
+    /* ── Строка уставки (из compile-time константы) ─────────── */
+    char set_str[20];
+    {
+        int16_t sp_x2 = (TEMP_SETPOINT >= 0.0f)
+            ? (int16_t)(TEMP_SETPOINT * 2.0f + 0.25f)
+            : (int16_t)(TEMP_SETPOINT * 2.0f - 0.25f);
+        uint8_t  sp_neg  = (sp_x2 < 0) ? 1U : 0U;
+        uint16_t sp_abs2 = (uint16_t)(sp_neg ? -sp_x2 : sp_x2);
+        snprintf(set_str, sizeof(set_str), "SET %s%u.%1uC",
+                 sp_neg ? "-" : "+",
+                 (unsigned)(sp_abs2 / 2U),
+                 (unsigned)((sp_abs2 % 2U) * 5U));
+    }
+
+    /* ── Статус нагрева ─────────────────────────────────────── */
+    const char *relay_str = relay_on ? "ON " : "OFF";
+
     if (!initialized)
     {
-        /* ── Полный рефреш при старте ─────────────────────────────── */
+        /* ── Полный рефреш при старте ─────────────────────────── */
         for (uint32_t i = 0U; i < EPD_BUFFER_SIZE; i++)
         {
             bw_prev[i] = 0xFFU;
             red[i]     = 0x00U;
         }
 
+        /* Статические RED-метки */
         EPD_DrawString(bw_prev, red, 2,  2, "DS1620", EPD_COLOR_RED);
-        EPD_DrawString(bw_prev, red, 2, 55, "deg C",  EPD_COLOR_RED);
+        EPD_DrawString(bw_prev, red, 2, 48, "deg C",  EPD_COLOR_RED);
+        EPD_DrawString(bw_prev, red, 2, 70, set_str,  EPD_COLOR_RED);
+        EPD_DrawString(bw_prev, red, 2, 88, "HEAT:",  EPD_COLOR_RED);
 
+        /* Разделительные линии */
         for (uint32_t col = 0U; col < EPD_BYTES_PER_ROW; col++)
         {
-            bw_prev[13U * EPD_BYTES_PER_ROW + col] = 0x00U;
-            bw_prev[51U * EPD_BYTES_PER_ROW + col] = 0x00U;
+            bw_prev[ 13U * EPD_BYTES_PER_ROW + col] = 0x00U;
+            bw_prev[ 44U * EPD_BYTES_PER_ROW + col] = 0x00U;
+            bw_prev[ 65U * EPD_BYTES_PER_ROW + col] = 0x00U;
+            bw_prev[ 83U * EPD_BYTES_PER_ROW + col] = 0x00U;
+            bw_prev[ 99U * EPD_BYTES_PER_ROW + col] = 0x00U;
+            bw_prev[129U * EPD_BYTES_PER_ROW + col] = 0x00U;
         }
 
-        EPD_DrawString_Big(bw_prev, red, 2, 20, temp_str, EPD_COLOR_BLACK, 3U);
+        /* Динамический контент — первый рендер */
+        EPD_DrawString_Big(bw_prev, red, 2,  20, temp_str,  EPD_COLOR_BLACK, 3U);
+        EPD_DrawString_Big(bw_prev, red, 2, 104, relay_str, EPD_COLOR_BLACK, 3U);
 
         EPD_Display(bw_prev, red);
         initialized = 1U;
     }
     else
     {
-        /* ── Дифференциальный апдейт ──────────────────────────────── */
+        /* ── Дифференциальный апдейт ──────────────────────────── */
 
-        /* 1. Копируем предыдущий кадр в новый как основу */
+        /* 1. Копируем предыдущий кадр */
         for (uint32_t i = 0U; i < EPD_BUFFER_SIZE; i++)
             bw_new[i] = bw_prev[i];
 
-        /* 2. Перерисовываем только зону цифр в новом кадре */
-        for (uint32_t row = EPD_TEMP_Y0; row <= EPD_TEMP_Y1; row++)
+        /* 2. Очищаем зоны динамического контента (разделители остаются нетронутыми) */
+        for (uint32_t row = 14U; row <= 43U; row++)          /* зона А: температура */
             for (uint32_t col = 0U; col < EPD_BYTES_PER_ROW; col++)
                 bw_new[row * EPD_BYTES_PER_ROW + col] = 0xFFU;
 
-        EPD_DrawString_Big(bw_new, red, 2, 20, temp_str, EPD_COLOR_BLACK, 3U);
+        for (uint32_t row = 100U; row <= 128U; row++)         /* зона Б: реле ON/OFF */
+            for (uint32_t col = 0U; col < EPD_BYTES_PER_ROW; col++)
+                bw_new[row * EPD_BYTES_PER_ROW + col] = 0xFFU;
 
-        /*
-         * 3. XOR: ищем первую и последнюю строку, где что-то изменилось.
-         *    bw_prev XOR bw_new != 0  →  в этой строке есть изменения.
-         */
+        /* 3. Рендерим новые строки */
+        EPD_DrawString_Big(bw_new, red, 2,  20, temp_str,  EPD_COLOR_BLACK, 3U);
+        EPD_DrawString_Big(bw_new, red, 2, 104, relay_str, EPD_COLOR_BLACK, 3U);
+
+        /* 4. XOR: ищем первую и последнюю изменившуюся строку */
         uint16_t row_first = 0xFFFFU;
         uint16_t row_last  = 0U;
 
-        for (uint32_t row = EPD_TEMP_Y0; row <= EPD_TEMP_Y1; row++)
+        for (uint32_t row = 14U; row <= 130U; row++)
         {
             for (uint32_t col = 0U; col < EPD_BYTES_PER_ROW; col++)
             {
@@ -154,19 +214,17 @@ void Temp_Demo(void)
                 {
                     if (row < (uint32_t)row_first) row_first = (uint16_t)row;
                     if (row > (uint32_t)row_last)  row_last  = (uint16_t)row;
-                    break;  /* нашли изменение в строке — переходим к следующей */
+                    break;
                 }
             }
         }
 
-        /* 4. Если изменений нет — ничего не делаем */
+        /* 5. Обновляем только изменившиеся строки */
         if (row_first <= row_last)
         {
-            /* 5. Partial update только изменившихся строк */
             EPD_PartialUpdate(bw_new + row_first * EPD_BYTES_PER_ROW,
                               row_first, row_last);
 
-            /* 6. Синхронизируем prev с тем, что теперь на экране */
             for (uint32_t row = row_first; row <= (uint32_t)row_last; row++)
                 for (uint32_t col = 0U; col < EPD_BYTES_PER_ROW; col++)
                     bw_prev[row * EPD_BYTES_PER_ROW + col] =
@@ -198,6 +256,20 @@ void LED_Initialize(void)
 
     /* Начальное состояние: светодиод выключен (HIGH) */
     gpioc->SetOutput(PC13_PIN, 1U);
+}
+
+/**
+  * @brief  Инициализация выхода реле на PA6 (active HIGH = нагрев включён)
+  * @retval None
+  */
+void Relay_Initialize(void)
+{
+    gpioa_main = &Driver_GPIO_A;
+    gpioa_main->Setup(RELAY_PIN, NULL);
+    gpioa_main->SetDirection(RELAY_PIN, ARM_GPIO_OUTPUT);
+    gpioa_main->SetOutputMode(RELAY_PIN, ARM_GPIO_PUSH_PULL);
+    gpioa_main->SetPullResistor(RELAY_PIN, ARM_GPIO_PULL_NONE);
+    gpioa_main->SetOutput(RELAY_PIN, 0U); /* реле выключено при старте */
 }
 
 /**
