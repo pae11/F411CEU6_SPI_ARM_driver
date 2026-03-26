@@ -79,18 +79,28 @@ static void ds1620_write_byte(uint8_t byte)
     }
 }
 
-/* Read n bits, LSB first; returns value right-justified */
+/*
+ * Read n bits, LSB first.
+ *
+ * DS1620 timing: bit 0 is placed on DQ on the FALLING edge of the last
+ * command-byte CLK (i.e. before this function is called, CLK is already
+ * LOW and DQ already carries bit 0).  Each subsequent bit appears after
+ * the next falling edge.  So: read current DQ, then clock to get the
+ * next bit, repeat.
+ */
 static uint16_t ds1620_read_bits(uint8_t n)
 {
     dq_input();
+    delay_us(2U);   /* tDV: let DS1620 settle bit 0 on DQ */
+
     uint16_t val = 0U;
     for (uint8_t i = 0U; i < n; i++)
     {
+        if (dq_read()) val |= (uint16_t)(1U << i);  /* sample before next edge */
         clk_high();
         delay_us(1U);
         clk_low();
-        delay_us(1U);
-        if (dq_read()) val |= (uint16_t)(1U << i);
+        delay_us(2U);   /* DS1620 outputs next bit after falling edge */
     }
     return val;
 }
