@@ -55,7 +55,7 @@ int main(void)
         delay_ms(LED_BLINK_INTERVAL);
 
         /* Обновляем температуру каждые 30 секунд */
-        if ((sys_tick_count - last_update) >= 30000U)
+        if ((sys_tick_count - last_update) >= 5000U)
         {
             Temp_Demo();
             last_update = sys_tick_count;
@@ -91,8 +91,9 @@ void Temp_Demo(void)
             : (int16_t)(temperature * 2.0f - 0.25f);
         uint8_t  neg  = (raw_x2 < 0) ? 1U : 0U;
         uint16_t abs2 = (uint16_t)(neg ? -raw_x2 : raw_x2);
-        snprintf(temp_str, sizeof(temp_str), "%s%u.%u",
-                 neg ? "-" : "+", (unsigned)(abs2 / 2U), (unsigned)((abs2 % 2U) * 5U));
+        /* DS1620 resolves 0.5°C: second decimal is always 0 or 5 → show as 2 digits */
+        snprintf(temp_str, sizeof(temp_str), "%s%u.%02u",
+                 neg ? "-" : "+", (unsigned)(abs2 / 2U), (unsigned)((abs2 % 2U) * 50U));
     }
     else
     {
@@ -117,7 +118,7 @@ void Temp_Demo(void)
             bw_prev[51U * EPD_BYTES_PER_ROW + col] = 0x00U;
         }
 
-        EPD_DrawString_Big(bw_prev, red, 2, 20, temp_str, EPD_COLOR_BLACK, 4U);
+        EPD_DrawString_Big(bw_prev, red, 2, 20, temp_str, EPD_COLOR_BLACK, 3U);
 
         EPD_Display(bw_prev, red);
         initialized = 1U;
@@ -135,7 +136,7 @@ void Temp_Demo(void)
             for (uint32_t col = 0U; col < EPD_BYTES_PER_ROW; col++)
                 bw_new[row * EPD_BYTES_PER_ROW + col] = 0xFFU;
 
-        EPD_DrawString_Big(bw_new, red, 2, 20, temp_str, EPD_COLOR_BLACK, 4U);
+        EPD_DrawString_Big(bw_new, red, 2, 20, temp_str, EPD_COLOR_BLACK, 3U);
 
         /*
          * 3. XOR: ищем первую и последнюю строку, где что-то изменилось.
